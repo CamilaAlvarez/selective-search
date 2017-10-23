@@ -1,0 +1,28 @@
+cmake_minimum_required(VERSION 3.6)
+project(selective_search)
+
+set(CMAKE_CXX_STANDARD 11)
+set(OPENCV_HINT /home/calvarez/source/OrandLibs/linux_64bits/opencv-3.1.0/build/ CACHE PATH
+        "Location of OpenCVConfig.cmake")
+find_package(OpenCV REQUIRED HINTS ${OPENCV_HINT})
+find_package(Boost COMPONENTS system filesystem REQUIRED)
+include(cmake/FindGlog.cmake)
+include(cmake/FindGFlags.cmake)
+
+if (DEBUG)
+    add_definitions( -DDEBUG )
+endif ()
+
+set(SOURCE_FILES main.cpp)
+add_executable(selective_search ${SOURCE_FILES})
+target_link_libraries(selective_search ${OpenCV_LIBS})
+target_include_directories(selective_search PRIVATE ${OpenCV_INCLUDE_DIRS})
+if (GLOG_FOUND)
+    target_include_directories(selective_search PRIVATE ${GLOG_INCLUDE_DIRS})
+    target_link_libraries(selective_search ${GLOG_LIBRARIES})
+endif ()
+if (GFLAGS_NOT_FOUND)
+    message(FATAL_ERROR "GFLAGS IS REQUIRED")
+endif ()
+target_include_directories(selective_search PRIVATE ${GFLAGS_INCLUDE_DIRS} ${Boost_INCLUDE_DIR})
+target_link_libraries(selective_search ${GFLAGS_LIBRARIES} ${Boost_LIBRARIES})
