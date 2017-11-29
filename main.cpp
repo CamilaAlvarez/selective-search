@@ -115,7 +115,7 @@ int main(int argc, char *argv[]) {
         LOG_IF(WARNING ,image.empty()) << "EMPTY IMAGE: " << filename;
         if(image.empty())
             continue;
-        resize(image);
+        //resize(image);
         cv::Ptr<cv::ximgproc::segmentation::SelectiveSearchSegmentation> ss =
                 cv::ximgproc::segmentation::createSelectiveSearchSegmentation();
         // set input image on which we will run segmentation
@@ -179,7 +179,7 @@ int main(int argc, char *argv[]) {
         // show output
         imshow("Output", imOut);
 #endif
-        LOG(INFO) << "FINISHED IMAGE: " << *it;
+        LOG(INFO) << "FINISHED IMAGE: " << it->second;
     }
     images_file.close();
     return 0;
