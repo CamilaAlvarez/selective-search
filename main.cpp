@@ -7,6 +7,7 @@
 #include "gflags/gflags.h"
 #include "glog/logging.h"
 #include <vector>
+#include <map>
 #include <fstream>
 #include "boost/filesystem.hpp"
 
@@ -14,8 +15,24 @@ DEFINE_string(input_images, "", "File that contains one image path per line");
 DEFINE_string(base_image_dir, "", "Base directory for all images (Optional)");
 DEFINE_string(output_directory, "", "Directory where regions will be saved");
 DEFINE_int32(number_regions, 100, "Number of regions to retrieve");
-DEFINE_double(min_area, 0.2, "Minimum area to consider");
+DEFINE_double(min_width, 0.2, "Minimum area to consider");
 DEFINE_bool(fast_computation, false, "Set fast computatation");
+
+static std::vector<std::string> split(const std::string& str, const std::string& delim)
+{
+    std::vector<std::string> tokens;
+    size_t prev = 0, pos = 0;
+    do
+    {
+        pos = str.find(delim, prev);
+        if (pos == std::string::npos) pos = str.length();
+        std::string token = str.substr(prev, pos-prev);
+        if (!token.empty()) tokens.push_back(token);
+        prev = pos + delim.length();
+    }
+    while (pos < str.length() && prev < str.length());
+    return tokens;
+}
 
 static void resize(cv::Mat &image){
     //Resize so it has same size that faster r-cnn uses
@@ -60,7 +77,7 @@ int main(int argc, char *argv[]) {
                                     "--input_images <input file>\n"
                                     "--output_directory <output directory>\n"
                                     "--number_regions <number of regions>"
-                                    "--min_area <min area to consider>");
+                                    "--min_width <min area to consider>");
     ::google::InitGoogleLogging(argv[0]);
     gflags::ParseCommandLineFlags(&argc, &argv, true);
     if(FLAGS_input_images.empty() || FLAGS_output_directory.empty() ){
@@ -78,14 +95,15 @@ int main(int argc, char *argv[]) {
 
     std::ifstream images_file(FLAGS_input_images);
     CHECK(images_file.is_open()) << "COULD NOT OPEN INPUT FILE";
-    std::vector<std::string> images;
+    std::map<std::string,std::map> images;
     std::string line;
     while(std::getline(images_file, line)){
-        images.push_back(line);
+        std::vector<std::string> splittedLine = split(line, "\t")
+        images[splittedLine[0]] = splittedLine[1];
     }
-    for (std::vector<std::string>::iterator it = images.begin();
+    for (std::map<std::string, std::string>::iterator it = images.begin();
          it != images.end() ; ++it) {
-        std::string filename = *it;
+        std::string filename = it->second;
         if(!FLAGS_base_image_dir.empty()){
             boost::filesystem::path base_dir(FLAGS_base_image_dir);
             boost::filesystem::path image_name(filename);
@@ -116,10 +134,11 @@ int main(int argc, char *argv[]) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
         LOG(INFO) <<  "TOTAL NUMBER OF REGION PROPOSALS: " << regions.size() << " IN :" << duration << " milliseconds";
         std::string output_file;
-        createOutputDirectoryIfNecessary(*it, output_file);
+        createOutputDirectoryIfNecessary(it->second, output_file);
         std::ofstream output(output_file);
-        int imageArea = image.cols*image.rows;
+        int imageWidth = image.cols;
         int count = 0;
+        boost::filesystem::path output_path(FLAGS_output_directory);
         LOG(INFO) << "WRITING OUTPUT";
         output << "Image size: " << image.cols << "," << image.rows << std::endl;
         output << duration << "ms" << std::endl;
@@ -128,10 +147,15 @@ int main(int argc, char *argv[]) {
             if(count >= FLAGS_number_regions )
                 break;
             cv::Rect region = regions[i];
-            if (region.area() < FLAGS_min_area*imageArea)
+            if (region.width < FLAGS_min_width*imageWidth)
                 continue;
-            output << region.x << "," << region.y << "," << region.x+region.width << "," << region.y+region.height
-                   << std::endl;
+            
+            boost::filesystem::path image_path(it->first+std::to_string(count)+".jpg");
+            boost::filesystem::path output_file = output_path / image_path;
+            output << it->first << "\t" << it->first << "#" << count << "\t"
+                << region.x << "," << region.y << "," << region.x+region.width << "," << region.y+region.height
+                << "\t" << output_file.string() << std::endl;
+            cv::imwrite(output_file.string(), image(region))
             count++;
         }
 
@@ -144,7 +168,7 @@ int main(int argc, char *argv[]) {
                 break;
             }
             cv::Rect region = regions[i];
-            if (region.area() < FLAGS_min_area*imageArea)
+            if (region.width < FLAGS_min_width*imageWidth)
                 continue;
             cv::rectangle(imOut, region, cv::Scalar(0, 255, 0));
             count++;
