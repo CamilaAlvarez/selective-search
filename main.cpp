@@ -95,10 +95,10 @@ int main(int argc, char *argv[]) {
 
     std::ifstream images_file(FLAGS_input_images);
     CHECK(images_file.is_open()) << "COULD NOT OPEN INPUT FILE";
-    std::map<std::string,std::map> images;
+    std::map<std::string,std::string> images;
     std::string line;
     while(std::getline(images_file, line)){
-        std::vector<std::string> splittedLine = split(line, "\t")
+        std::vector<std::string> splittedLine = split(line, "\t");
         images[splittedLine[0]] = splittedLine[1];
     }
     for (std::map<std::string, std::string>::iterator it = images.begin();
@@ -155,7 +155,7 @@ int main(int argc, char *argv[]) {
             output << it->first << "\t" << it->first << "#" << count << "\t"
                 << region.x << "," << region.y << "," << region.x+region.width << "," << region.y+region.height
                 << "\t" << output_file.string() << std::endl;
-            cv::imwrite(output_file.string(), image(region))
+            cv::imwrite(output_file.string(), image(region));
             count++;
         }
 
