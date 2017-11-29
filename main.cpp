@@ -149,14 +149,14 @@ int main(int argc, char *argv[]) {
             cv::Rect region = regions[i];
             if (region.width < FLAGS_min_width*imageWidth)
                 continue;
-            
-            boost::filesystem::path image_path(it->first+std::to_string(count)+".jpg");
+            count++;
+            boost::filesystem::path image_path(it->first+"#"+std::to_string(count)+".jpg");
             boost::filesystem::path output_file = output_path / image_path;
             output << it->first << "\t" << it->first << "#" << count << "\t"
                 << region.x << "," << region.y << "," << region.x+region.width << "," << region.y+region.height
                 << "\t" << output_file.string() << std::endl;
             cv::imwrite(output_file.string(), image(region));
-            count++;
+            
         }
 
         output.close();
