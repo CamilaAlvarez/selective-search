@@ -10,6 +10,9 @@
 #include <map>
 #include <fstream>
 #include "boost/filesystem.hpp"
+#ifdef _OPENMP
+    #include <omp.h>
+#endif
 
 DEFINE_string(input_images, "", "File that contains one image path per line");
 DEFINE_string(base_image_dir, "", "Base directory for all images (Optional)");
@@ -84,7 +87,8 @@ int main(int argc, char *argv[]) {
         gflags::ShowUsageWithFlagsRestrict(argv[0],"selective_search");
         return 1;
     }
-
+    cv::setUseOptimized(true);
+    cv::setNumThreads(4);
     boost::filesystem::path output_directory(FLAGS_output_directory);
     if(boost::filesystem::is_directory(output_directory)){
         LOG(WARNING) << "OUTPUT DIRECTORY EXISTS. FILES MAY BE OVERWRITTEN.";
@@ -95,15 +99,23 @@ int main(int argc, char *argv[]) {
 
     std::ifstream images_file(FLAGS_input_images);
     CHECK(images_file.is_open()) << "COULD NOT OPEN INPUT FILE";
-    std::map<std::string,std::string> images;
+    //std::map<std::string,std::string> images;
     std::string line;
+    std::vector<std::string> images;
+    std::vector<std::string> images_id;
     while(std::getline(images_file, line)){
         std::vector<std::string> splittedLine = split(line, "\t");
-        images[splittedLine[0]] = splittedLine[1];
+        images.push_back(splittedLine[1]);
+	images_id.push_back(splittedLine[0]);
     }
-    for (std::map<std::string, std::string>::iterator it = images.begin();
-         it != images.end() ; ++it) {
-        std::string filename = it->second;
+    size_t number_images = images.size();
+    #ifdef _OPENMP
+        omp_lock_t lock;
+        omp_init_lock(&lock);
+    #endif
+    #pragma omp parallel for num_threads(6)
+    for (size_t i = 0; i< number_images; i++) {
+        std::string filename = images[i];
         if(!FLAGS_base_image_dir.empty()){
             boost::filesystem::path base_dir(FLAGS_base_image_dir);
             boost::filesystem::path image_name(filename);
@@ -115,7 +127,7 @@ int main(int argc, char *argv[]) {
         LOG_IF(WARNING ,image.empty()) << "EMPTY IMAGE: " << filename;
         if(image.empty())
             continue;
-        //resize(image);
+        resize(image);
         cv::Ptr<cv::ximgproc::segmentation::SelectiveSearchSegmentation> ss =
                 cv::ximgproc::segmentation::createSelectiveSearchSegmentation();
         // set input image on which we will run segmentation
@@ -134,7 +146,7 @@ int main(int argc, char *argv[]) {
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>( end - start ).count();
         LOG(INFO) <<  "TOTAL NUMBER OF REGION PROPOSALS: " << regions.size() << " IN :" << duration << " milliseconds";
         std::string output_file;
-        createOutputDirectoryIfNecessary(it->second, output_file);
+        createOutputDirectoryIfNecessary(images[i], output_file);
         std::ofstream output(output_file);
         int imageWidth = image.cols;
         int count = 0;
@@ -143,16 +155,16 @@ int main(int argc, char *argv[]) {
         output << "Image size: " << image.cols << "," << image.rows << std::endl;
         output << duration << "ms" << std::endl;
         output << "x1,y1,x2,y2" << std::endl;
-        for (int i = 0; i < regions.size(); ++i) {
+        for (int j = 0; j < regions.size(); ++j) {
             if(count >= FLAGS_number_regions )
                 break;
-            cv::Rect region = regions[i];
+	    cv::Rect region = regions[j];
             if (region.width < FLAGS_min_width*imageWidth)
                 continue;
             count++;
-            boost::filesystem::path image_path(it->first+"#"+std::to_string(count)+".jpg");
+            boost::filesystem::path image_path(images_id[i]+"#"+std::to_string(count)+".jpg");
             boost::filesystem::path output_file = output_path / image_path;
-            output << it->first << "\t" << it->first << "#" << count << "\t"
+            output << images_id[i] << "\t" << images_id[i] << "#" << count << "\t"
                 << region.x << "," << region.y << "," << region.x+region.width << "," << region.y+region.height
                 << "\t" << output_file.string() << std::endl;
             cv::imwrite(output_file.string(), image(region));
@@ -163,11 +175,11 @@ int main(int argc, char *argv[]) {
 #ifdef DEBUG
         count = 0;
         cv::Mat imOut = image.clone();
-        for(int i = 0; i < regions.size(); i++) {
+        for(int j = 0; j < regions.size(); j++) {
             if (count >= FLAGS_number_regions) {
                 break;
             }
-            cv::Rect region = regions[i];
+            cv::Rect region = regions[j];
             if (region.width < FLAGS_min_width*imageWidth)
                 continue;
             cv::rectangle(imOut, region, cv::Scalar(0, 255, 0));
@@ -179,8 +191,11 @@ int main(int argc, char *argv[]) {
         // show output
         imshow("Output", imOut);
 #endif
-        LOG(INFO) << "FINISHED IMAGE: " << it->second;
+        LOG(INFO) << "FINISHED IMAGE: " << images[i];
     }
+    #ifdef _OPENMP
+        omp_destroy_lock(&lock);
+    #endif
     images_file.close();
     return 0;
 }
